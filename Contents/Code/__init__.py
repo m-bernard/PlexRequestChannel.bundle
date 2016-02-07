@@ -369,7 +369,7 @@ def ConfirmTVRequest(id, title, source="", year="", poster="", backdrop="", summ
 
 @indirect
 @route(PREFIX + '/addtvrequest')
-def AddTVRequest(id, title, source='', year="", poster="", backdrop="", summary="", locked='unlocked'):
+def AddTVRequest(id, title, source='', year="", poster="", backdrop="", summary="", season="", locked='unlocked'):
     if id in Dict['tv']:
         Log.Debug("TV Show is already requested")
         return MainMenu(locked=locked, message="TV Show has already been requested")
@@ -383,8 +383,8 @@ def AddTVRequest(id, title, source='', year="", poster="", backdrop="", summary=
                           'summary': summary, 'user': user, 'automated': False}
         Dict.Save()
         if Prefs['sonarr_autorequest'] and Prefs['sonarr_url'] and Prefs['sonarr_api']:
-            SendToSonarr(id)
-        if Prefs['sickrage_autorequest'] and Prefs['sickrage_url'] and Prefs['sickrage_api']:
+            SendToSonarr(id, monitor_season=season)
+        if Prefs['sickrage_autorequest'] and Prefs['sickrage_url'] and Prefs['sickrage_api'] and not season:
             SendToSickrage(id)
         notifyRequest(id=id, type='tv')
         oc = ObjectContainer(header=TITLE, message="TV Show has been requested.")
@@ -486,6 +486,7 @@ def ClearRequests(locked='unlocked'):
 def ViewRequest(id, type, locked='unlocked'):
     key = Dict[type][id]
     title_year = key['title'] + " (" + key['year'] + ")"
+    season = key['season']
     oc = ObjectContainer(title2=title_year)
     if Client.Platform == ClientPlatform.Android:  # If an android, add an empty first item because it gets truncated for some reason
         oc.add(DirectoryObject(key=None, title=""))
@@ -497,8 +498,8 @@ def ViewRequest(id, type, locked='unlocked'):
             oc.add(DirectoryObject(key=Callback(SendToCouchpotato, id=id, locked=locked), title="Send to CouchPotato", thumb=R('couchpotato.png')))
     if key['type'] == 'tv':
         if Prefs['sonarr_url'] and Prefs['sonarr_api']:
-            oc.add(DirectoryObject(key=Callback(SendToSonarr, id=id, locked=locked), title="Send to Sonarr", thumb=R('sonarr.png')))
-        if Prefs['sickrage_url'] and Prefs['sickrage_api']:
+            oc.add(DirectoryObject(key=Callback(SendToSonarr, id=id, monitor_season=season, locked=locked), title="Send to Sonarr", thumb=R('sonarr.png')))
+        if Prefs['sickrage_url'] and Prefs['sickrage_api'] and not season:
             oc.add(DirectoryObject(key=Callback(SendToSickrage, id=id, locked=locked), title="Send to Sickrage", thumb=R('sickrage.png')))
     oc.add(DirectoryObject(key=Callback(ViewRequests, locked=locked), title="Return to View Requests", thumb=R('return.png')))
     return oc
@@ -588,7 +589,7 @@ def SendToCouchpotato(id, locked='unlocked'):
 
 
 @route(PREFIX + '/sendtosonarr')
-def SendToSonarr(id, locked='unlocked'):
+def SendToSonarr(id, monitor_season="", locked='unlocked'):
     if not Prefs['sonarr_url'].startswith("http"):
         sonarr_url = "http://" + Prefs['sonarr_url']
     else:
