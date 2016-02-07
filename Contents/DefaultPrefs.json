@@ -1,0 +1,203 @@
+[
+  {
+    "id": "movie_db",
+    "label": "Movie Database  ",
+    "type": "enum",
+    "values": ["OpenMovieDatabase", "TheMovieDatabase"],
+    "default": "OpenMovieDatabase"
+  },
+  {
+    "id": "usersviewrequests",
+    "label": "Allow users to see requests page?",
+    "type": "bool",
+    "default": false
+  },
+  {
+    "id": "password",
+    "label": "View Requests Password",
+    "type": "text",
+    "option": "hidden",
+    "default": "",
+    "secure": true
+  },
+  {
+    "id": "register",
+    "label": "Register User Clients?",
+    "type": "bool",
+    "default": false
+  },
+  {
+    "id": "weekly_limit",
+    "label": "Weekly Request Limit (unlimited by default)",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "couchpotato_url",
+    "label": "CouchPotato URL",
+    "type": "text",
+    "default": "http://127.0.0.1:5050/"
+  },
+  {
+    "id": "couchpotato_api",
+    "label": "CouchPotato API Key",
+    "type": "text",
+    "default": "",
+    "secure": true
+  },
+  {
+    "id": "couchpotato_autorequest",
+    "label": "Automatically add request to CouchPotato?",
+    "type": "bool",
+    "default": false
+  },
+  {
+    "id": "couchpotato_profile",
+    "label": "CouchPotato Profile Name",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "couchpotato_category",
+    "label": "CouchPotato Category Name",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "sonarr_url",
+    "label": "Sonarr URL",
+    "type": "text",
+    "default": "http://127.0.0.1:8989/"
+  },
+  {
+    "id": "sonarr_api",
+    "label": "Sonarr API Key",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "sonarr_autorequest",
+    "label": "Automatically add request to Sonarr?",
+    "type": "bool",
+    "default": false
+  },
+  {
+    "id": "sonarr_profile",
+    "label": "Sonarr Profile",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "sonarr_path",
+    "label": "Sonarr Path",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "sonarr_monitor",
+    "label": "Monitor Seasons",
+    "type": "enum",
+    "values": ["all", "future", "latest", "first", "missing", "existing", "none"],
+    "default": "none"
+  },
+  {
+    "id": "sickrage_url",
+    "label": "Sickrage URL",
+    "type": "text",
+    "default": "http://127.0.0.1:8081/"
+  },
+  {
+    "id": "sickrage_api",
+    "label": "Sickrage Api Key",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "sickrage_autorequest",
+    "label": "Automatically add request to SickRage?",
+    "type": "bool",
+    "default": false
+  },
+  {
+    "id": "sickrage_location",
+    "label": "Sickrage Download Location (optional)",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "sickrage_status",
+    "label": "Sickrage Initial Status of episodes",
+    "type": "enum",
+    "values": ["wanted","skipped","archived","ignored"],
+    "default": "wanted"
+  },
+  {
+    "id": "sickrage_initial",
+    "label": "Sickrage Initial Qualities (|)",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "sickrage_archive",
+    "label": "Sickrage Archive Qualities (|)",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "pushbullet_api",
+    "label": "Pushbullet API",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "pushover_api",
+    "label": "Pushover API Key",
+    "type": "text",
+    "default": "ajMtuYCg8KmRQCNZK2ggqaqiBw2UHi"
+  },
+  {
+    "id": "pushover_user",
+    "label": "Pushover User Key",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "email_from",
+    "label": "Email to send from",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "email_to",
+    "label": "Email to send to",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "email_server",
+    "label": "SMTP Server",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "email_port",
+    "label": "SMTP Server Port",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "email_username",
+    "label": "SMTP Username",
+    "type": "text",
+    "default": ""
+  },
+  {
+    "id": "email_password",
+    "label": "SMTP Server Password",
+    "type": "text",
+    "default": "",
+    "option": "hidden",
+    "secure": true
+  }
+
+]
