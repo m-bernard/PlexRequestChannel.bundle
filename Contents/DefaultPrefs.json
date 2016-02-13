@@ -94,6 +94,12 @@
     "default": ""
   },
   {
+    "id": "sonarr_seasonrequests",
+    "label": "Allow users to request specific seasons in Sonarr?",
+    "type": "bool",
+    "default": false
+  },
+  {
     "id": "sonarr_monitor",
     "label": "Monitor Seasons",
     "type": "enum",

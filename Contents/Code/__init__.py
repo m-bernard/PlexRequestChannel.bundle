@@ -486,7 +486,8 @@ def ClearRequests(locked='unlocked'):
 def ViewRequest(id, type, locked='unlocked'):
     key = Dict[type][id]
     title_year = key['title'] + " (" + key['year'] + ")"
-    season = key['season']
+
+    season = key.get('season')  # 'season' may not be set
     oc = ObjectContainer(title2=title_year)
     if Client.Platform == ClientPlatform.Android:  # If an android, add an empty first item because it gets truncated for some reason
         oc.add(DirectoryObject(key=None, title=""))
@@ -590,13 +591,21 @@ def SendToCouchpotato(id, locked='unlocked'):
 
 @route(PREFIX + '/sendtosonarr')
 def SendToSonarr(id, monitor_season="", locked='unlocked'):
+    title = Dict['tv'][id]['title']
+    oc = SendToSonarrNoMenu(id, monitor_season=monitor_season, locked=locked)
+    if checkAdmin():
+        oc.add(DirectoryObject(key=Callback(ConfirmDeleteRequest, id=id, type='tv', title_year=title, locked=locked), title="Delete Request"))
+    oc.add(DirectoryObject(key=Callback(ViewRequests, locked=locked), title="Return to View Requests"))
+    oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="Return to Main Menu"))
+    return oc
+
+def SendToSonarrNoMenu(id, monitor_season="", locked='unlocked'):
     if not Prefs['sonarr_url'].startswith("http"):
         sonarr_url = "http://" + Prefs['sonarr_url']
     else:
         sonarr_url = Prefs['sonarr_url']
     if not sonarr_url.endswith("/"):
         sonarr_url = sonarr_url + "/"
-    title = Dict['tv'][id]['title']
     api_header = {
         'X-Api-Key': Prefs['sonarr_api']
     }
@@ -631,7 +640,34 @@ def SendToSonarr(id, monitor_season="", locked='unlocked'):
                    'searchForMissingEpisodes': True
                    }
 
-    if Prefs['sonarr_monitor'] == 'all':
+    http_method = 'POST'
+    if Prefs['sonarr_seasonrequests'] and monitor_season:
+        # If the show already exists, we don't want to overwrite the currently monitored seasons.
+        lookup_json = JSON.ObjectFromURL(sonarr_url + "api/Series", headers=api_header)
+        for show in lookup_json:
+            Log.Debug("tvdbId " + str(id) + " vs " + str(show['tvdbId']))
+            if found_show['tvdbId'] == show['tvdbId']:
+                http_method = 'PUT'
+                options = show
+                Log.Debug("Found show")
+                break
+
+        found_season = None
+        for season in options['seasons']:
+            Log.Debug("season number " + str(monitor_season) + " vs " + str(season['seasonNumber']))
+            if season['seasonNumber'] == monitor_season:
+                found_season = season
+                Log.Debug("Found season")
+                break;
+
+        if not found_season:
+            return ObjectContainer(header=TITLE, message="Season already monitored!")
+        elif found_season['monitored']:
+            return ObjectContainer(header=TITLE, message="Season already monitored!")
+        else:
+            found_season['monitored'] = True
+
+    elif Prefs['sonarr_monitor'] == 'all':
         for season in options['seasons']:
             season['monitored'] = True
     elif Prefs['sonarr_monitor'] == 'future':
@@ -649,16 +685,14 @@ def SendToSonarr(id, monitor_season="", locked='unlocked'):
         options['monitored'] = False
     options['addOptions'] = add_options
     values = JSON.StringFromObject(options)
+
+    Log.Debug("Options is: " + str(options))
     try:
-        HTTP.Request(sonarr_url + "api/Series", data=values, headers=api_header)
+        HTTP.Request(sonarr_url + "api/Series", data=values, headers=api_header, method=http_method)
         oc = ObjectContainer(header=TITLE, message="Show has been sent to Sonarr.")
         Dict['tv'][id]['automated'] = True
     except:
         oc = ObjectContainer(header=TITLE, message="Could not send show to Sonarr!")
-    if checkAdmin():
-        oc.add(DirectoryObject(key=Callback(ConfirmDeleteRequest, id=id, type='tv', title_year=title, locked=locked), title="Delete Request"))
-    oc.add(DirectoryObject(key=Callback(ViewRequests, locked=locked), title="Return to View Requests"))
-    oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="Return to Main Menu"))
     return oc
 
 
