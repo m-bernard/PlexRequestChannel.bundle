@@ -337,7 +337,7 @@ def SearchTV(query, locked='unlocked'):
         else:
             thumb = R('no-poster.jpg')
         oc.add(
-            TVShowObject(key=Callback(ConfirmTVRequest, id=id, source='tvdb', title=title, year=year, poster=poster, summary=summary, locked=locked),
+            TVShowObject(key=Callback(ConfirmTVRequest, id=id, source='tvdb', title=title, year=year, poster=poster, summary=summary, thumb=thumb, locked=locked),
                          rating_key=id, title=title_year, summary=summary, thumb=thumb))
     if Client.Product in DUMB_KEYBOARD_CLIENTS or Client.Platform in DUMB_KEYBOARD_CLIENTS:
         Log.Debug("Client does not support Input. Using DumbKeyboard")
@@ -350,20 +350,84 @@ def SearchTV(query, locked='unlocked'):
 
 
 @route(PREFIX + '/confirmtvrequest')
-def ConfirmTVRequest(id, title, source="", year="", poster="", backdrop="", summary="", locked='unlocked'):
+def ConfirmTVRequest(id, title, source="", year="", poster="", backdrop="", summary="", season="", thumb="", locked='unlocked'):
     if year:
         title_year = title + " " + "(" + year + ")"
     else:
         title_year = title
-    oc = ObjectContainer(title1="Confirm TV Request", title2="Are you sure you would like to request the TV Show " + title_year + "?")
+    request_name = title_year + (" Season " + season) if season else ""
+    oc = ObjectContainer(title1="Confirm TV Request",
+            title2="Are you sure you would like to request the TV Show " + request_name + "?")
 
     if Client.Platform == ClientPlatform.Android:  # If an android, add an empty first item because it gets truncated for some reason
         oc.add(DirectoryObject(key=None, title=""))
     oc.add(DirectoryObject(
-        key=Callback(AddTVRequest, id=id, source=source, title=title, year=year, poster=poster, backdrop=backdrop, summary=summary, locked=locked),
+        key=Callback(AddTVRequest, id=id, source=source, title=title, year=year, poster=poster, backdrop=backdrop, summary=summary, season=season, locked=locked),
         title="Yes", thumb=R('check.png')))
+    if Prefs['sonarr_url'] and Prefs['sonarr_api'] and Prefs['sonarr_seasonrequests'] and not season:
+        oc.add(DirectoryObject(
+            key=Callback(SelectTVSeason, id=id, source=source, title=title, year=year, title_year=title_year, poster=poster,
+                backdrop=backdrop, summary=summary, thumb=thumb, locked=locked),
+            title="Select season", thumb=R('search.png')))
     oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="No", thumb=R('x-mark.png')))
 
+    return oc
+
+@route(PREFIX + '/searchtvseason')
+def SelectTVSeason(id, title, source="", year="", title_year="", poster="", backdrop="", summary="", thumb="", locked='unlocked'):
+    oc = ObjectContainer(title1="Search Results", content=ContainerContent.Shows, view_group="Details")
+    xml = XML.ElementFromURL(TVDB_API_URL + TVDB_API_KEY + "/series/" + id + "/all/en.xml")
+    episodes = xml.xpath("//Episode")
+    if len(episodes) == 0:
+        oc = ObjectContainer(header=TITLE, message="Sorry there were no results found.")
+        if Client.Product in DUMB_KEYBOARD_CLIENTS or Client.Platform in DUMB_KEYBOARD_CLIENTS:
+            Log.Debug("Client does not support Input. Using DumbKeyboard")
+            DumbKeyboard(prefix=PREFIX, oc=oc, callback=SearchTV, dktitle="Search Again", dkthumb=R('search.png'), locked=locked)
+        else:
+            oc.add(InputDirectoryObject(key=Callback(SearchTV, locked=locked), title="Search Again", prompt="Enter the name of the TV Show:",
+                                        thumb=R('search.png')))
+        oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="Return to Main Menu", thumb=R('return.png')))
+        return oc
+    count = 0
+    #seasons = {episode['SeasonNumber'] for episode in episodes}
+    seasons = []
+    for episode in episodes:
+        for child in episode.getchildren():
+            if child.tag.lower() == "seasonnumber" and child.text and child.text not in seasons:
+                seasons.append(child.text)
+    seasons.sort();
+
+    xml = XML.ElementFromURL(TVDB_API_URL + TVDB_API_KEY + "/series/" + id + "/banners.xml")
+    banners = xml.xpath("//Banner")
+    banners_by_season = {}
+    for banner in banners:
+        season = ""
+        thumb_path = ""
+        # TODO: Support other banner types, if a poster isn't found.
+        is_season = False
+        for child in banner.getchildren():
+            if child.tag.lower() == "season" and child.text != "":
+                season = child.text
+            elif child.tag.lower() == "bannerpath":
+                thumb_path = TVDB_BANNER_URL + child.text
+            elif child.tag.lower() == "bannertype" and child.text == "season":
+                is_season = True
+        if season and thumb_path and is_season and season not in banners_by_season:
+            banners_by_season[season] = thumb_path
+
+    for season in seasons:
+        thumb_path = banners_by_season[season] if season in banners_by_season else ""
+        oc.add(
+            SeasonObject(key=Callback(ConfirmTVRequest, id=id, source='tvdb', title=title, year=year, poster=poster, summary=summary, season=season, locked=locked),
+                         rating_key=(id + " " + season), title=("Season " + season), summary="", thumb=thumb_path))
+    if Client.Product in DUMB_KEYBOARD_CLIENTS or Client.Platform in DUMB_KEYBOARD_CLIENTS:
+
+        Log.Debug("Client does not support Input. Using DumbKeyboard")
+        DumbKeyboard(prefix=PREFIX, oc=oc, callback=SearchTV, dktitle="Search Again", dkthumb=R('search.png'), locked=locked)
+    else:
+        oc.add(InputDirectoryObject(key=Callback(SearchTV, locked=locked), title="Search Again", prompt="Enter the name of the TV Show:",
+                                    thumb=R('search.png')))
+    oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="Return to Main Menu", thumb=R('return.png')))
     return oc
 
 
@@ -371,26 +435,44 @@ def ConfirmTVRequest(id, title, source="", year="", poster="", backdrop="", summ
 @route(PREFIX + '/addtvrequest')
 def AddTVRequest(id, title, source='', year="", poster="", backdrop="", summary="", season="", locked='unlocked'):
     if id in Dict['tv']:
-        Log.Debug("TV Show is already requested")
-        return MainMenu(locked=locked, message="TV Show has already been requested")
-    else:
-        token = Request.Headers['X-Plex-Token']
-        user = ""
-        if token in Dict['register'] and Dict['register'][token]['nickname']:
-            user = Dict['register'][token]['nickname']
-            Dict['register'][token]['requests'] = Dict['register'][token]['requests'] + 1
-        Dict['tv'][id] = {'type': 'tv', 'id': id, 'source': source, 'title': title, 'year': year, 'poster': poster, 'backdrop': backdrop,
-                          'summary': summary, 'user': user, 'automated': False}
-        Dict.Save()
-        if Prefs['sonarr_autorequest'] and Prefs['sonarr_url'] and Prefs['sonarr_api']:
-            SendToSonarr(id, monitor_season=season)
-        if Prefs['sickrage_autorequest'] and Prefs['sickrage_url'] and Prefs['sickrage_api'] and not season:
-            SendToSickrage(id)
-        notifyRequest(id=id, type='tv')
-        oc = ObjectContainer(header=TITLE, message="TV Show has been requested.")
-        oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="Return to Main Menu", thumb=R('return.png')))
+        key = Dict['tv'][id]
+        if not key.get('seasons'):
+            # The full show has already been requested.
+            Log.Debug("TV Show is already requested")
+            return MainMenu(locked=locked, message="TV Show has already been requested")
+        if not season:
+            # The full show is being requested, so erase individual season requests.
+            key = Dict['tv'][id]['seasons'] = ""
+        else:
+            # We're requesting a season but some seasons have already been requested.
+            Log.Debug("Trying to add season")
+            existing_seasons = key['seasons'].split(",")
+            if season and season in existing_seasons:
+                Log.Debug("Season is already requested")
+                return MainMenu(locked=locked, message="Season has already been requested")
+            else:
+                Log.Debug("Adding season " + season + " to " + key['seasons'])
+                existing_seasons.append(season)
+                existing_seasons.sort()
+                season = ",".join(existing_seasons)
 
-        return MainMenu(locked=locked, message="TV Show has been requested")
+    token = Request.Headers['X-Plex-Token']
+    user = ""
+    if token in Dict['register'] and Dict['register'][token]['nickname']:
+        user = Dict['register'][token]['nickname']
+        Dict['register'][token]['requests'] = Dict['register'][token]['requests'] + 1
+    Dict['tv'][id] = {'type': 'tv', 'id': id, 'source': source, 'title': title, 'year': year, 'poster': poster, 'backdrop': backdrop,
+                      'summary': summary, 'user': user, 'automated': False, 'seasons': season }
+    Dict.Save()
+    if Prefs['sonarr_autorequest'] and Prefs['sonarr_url'] and Prefs['sonarr_api']:
+        SendToSonarr(id, monitor_seasons=seasons)
+    if Prefs['sickrage_autorequest'] and Prefs['sickrage_url'] and Prefs['sickrage_api'] and not season:
+        SendToSickrage(id)
+    notifyRequest(id=id, type='tv')
+    oc = ObjectContainer(header=TITLE, message="TV Show has been requested.")
+    oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="Return to Main Menu", thumb=R('return.png')))
+
+    return MainMenu(locked=locked, message="TV Show has been requested")
 
 
 @route(PREFIX + '/viewrequests')
@@ -443,8 +525,14 @@ def ViewRequests(query="", locked='unlocked', message=None):
                 summary = d['summary']
             if d['user']:
                 summary = "(Requested by " + d['user'] + ")\n " + summary
+            seasons = ""
+            if d.get('seasons'):
+                seasons = d['seasons']
+            season_title = title_year
+            if seasons:
+                season_title += " S" + seasons
             oc.add(
-                TVShowObject(key=Callback(ViewRequest, id=id, type=d['type'], locked=locked), rating_key=id, title=title_year, thumb=thumb,
+                TVShowObject(key=Callback(ViewRequest, id=id, type=d['type'], seasons=seasons, locked=locked), rating_key=id, title=season_title, thumb=thumb,
                              summary=summary, art=d['backdrop']))
     oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="Return to Main Menu", thumb=R('return.png')))
     if len(oc) > 1 and checkAdmin():
@@ -483,11 +571,11 @@ def ClearRequests(locked='unlocked'):
 
 
 @route(PREFIX + '/viewrequest')
-def ViewRequest(id, type, locked='unlocked'):
+def ViewRequest(id, type, seasons="", locked='unlocked'):
     key = Dict[type][id]
     title_year = key['title'] + " (" + key['year'] + ")"
 
-    season = key.get('season')  # 'season' may not be set
+
     oc = ObjectContainer(title2=title_year)
     if Client.Platform == ClientPlatform.Android:  # If an android, add an empty first item because it gets truncated for some reason
         oc.add(DirectoryObject(key=None, title=""))
@@ -499,7 +587,7 @@ def ViewRequest(id, type, locked='unlocked'):
             oc.add(DirectoryObject(key=Callback(SendToCouchpotato, id=id, locked=locked), title="Send to CouchPotato", thumb=R('couchpotato.png')))
     if key['type'] == 'tv':
         if Prefs['sonarr_url'] and Prefs['sonarr_api']:
-            oc.add(DirectoryObject(key=Callback(SendToSonarr, id=id, monitor_season=season, locked=locked), title="Send to Sonarr", thumb=R('sonarr.png')))
+            oc.add(DirectoryObject(key=Callback(SendToSonarr, id=id, monitor_seasons=seasons, locked=locked), title="Send to Sonarr", thumb=R('sonarr.png')))
         if Prefs['sickrage_url'] and Prefs['sickrage_api'] and not season:
             oc.add(DirectoryObject(key=Callback(SendToSickrage, id=id, locked=locked), title="Send to Sickrage", thumb=R('sickrage.png')))
     oc.add(DirectoryObject(key=Callback(ViewRequests, locked=locked), title="Return to View Requests", thumb=R('return.png')))
@@ -590,16 +678,16 @@ def SendToCouchpotato(id, locked='unlocked'):
 
 
 @route(PREFIX + '/sendtosonarr')
-def SendToSonarr(id, monitor_season="", locked='unlocked'):
+def SendToSonarr(id, monitor_seasons="", locked='unlocked'):
     title = Dict['tv'][id]['title']
-    oc = SendToSonarrNoMenu(id, monitor_season=monitor_season, locked=locked)
+    oc = SendToSonarrNoMenu(id, monitor_seasons=monitor_seasons, locked=locked)
     if checkAdmin():
         oc.add(DirectoryObject(key=Callback(ConfirmDeleteRequest, id=id, type='tv', title_year=title, locked=locked), title="Delete Request"))
     oc.add(DirectoryObject(key=Callback(ViewRequests, locked=locked), title="Return to View Requests"))
     oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="Return to Main Menu"))
     return oc
 
-def SendToSonarrNoMenu(id, monitor_season="", locked='unlocked'):
+def SendToSonarrNoMenu(id, monitor_seasons="", locked='unlocked'):
     if not Prefs['sonarr_url'].startswith("http"):
         sonarr_url = "http://" + Prefs['sonarr_url']
     else:
@@ -632,40 +720,43 @@ def SendToSonarrNoMenu(id, monitor_season="", locked='unlocked'):
             rootFolderPath = root[0]['path']
 
     Log.Debug("Profile id: " + str(profile_id))
-    options = {'title': found_show['title'], 'tvdbId': found_show['tvdbId'], 'qualityProfileId': int(profile_id),
-               'titleSlug': found_show['titleSlug'], 'rootFolderPath': rootFolderPath, 'seasons': found_show['seasons'], 'monitored': True}
+
+    # If the show already exists, we don't want to overwrite the currently monitored seasons.
+    lookup_json = JSON.ObjectFromURL(sonarr_url + "api/Series", headers=api_header)
+    http_method = 'POST'
+    options = None
+    for show in lookup_json:
+        if found_show['tvdbId'] == show['tvdbId']:
+            http_method = 'PUT'
+            options = show
+            Log.Debug("Show " + str(found_show['tvdbId']) + " already exists.")
+            break
+
+    if not options:
+        options = {'title': found_show['title'], 'tvdbId': found_show['tvdbId'], 'qualityProfileId': int(profile_id),
+                   'titleSlug': found_show['titleSlug'], 'rootFolderPath': rootFolderPath, 'seasons': found_show['seasons'], 'monitored': True}
 
     add_options = {'ignoreEpisodesWithFiles': False,
                    'ignoreEpisodesWithoutFiles': False,
                    'searchForMissingEpisodes': True
                    }
 
-    http_method = 'POST'
-    if Prefs['sonarr_seasonrequests'] and monitor_season:
-        # If the show already exists, we don't want to overwrite the currently monitored seasons.
-        lookup_json = JSON.ObjectFromURL(sonarr_url + "api/Series", headers=api_header)
-        for show in lookup_json:
-            Log.Debug("tvdbId " + str(id) + " vs " + str(show['tvdbId']))
-            if found_show['tvdbId'] == show['tvdbId']:
-                http_method = 'PUT'
-                options = show
-                Log.Debug("Found show")
-                break
+    if Prefs['sonarr_seasonrequests'] and monitor_seasons:
 
-        found_season = None
+        Log.Debug("Searching for seasons: " + monitor_seasons)
+        monitor_seasons_list = set(monitor_seasons.split(","))
+        found_season = False
         for season in options['seasons']:
-            Log.Debug("season number " + str(monitor_season) + " vs " + str(season['seasonNumber']))
-            if season['seasonNumber'] == monitor_season:
-                found_season = season
-                Log.Debug("Found season")
-                break;
-
+            Log.Debug("Found season: " + str(season['seasonNumber']))
+            if str(season['seasonNumber']) in monitor_seasons_list:
+                if not season['monitored']:
+                    season['monitored'] = True
+                    Log.Debug("Found season")
+                    found_season = True
         if not found_season:
-            return ObjectContainer(header=TITLE, message="Season already monitored!")
-        elif found_season['monitored']:
-            return ObjectContainer(header=TITLE, message="Season already monitored!")
-        else:
-            found_season['monitored'] = True
+            plural_season = pluralize(monitor_seasons_list, "season")
+            msg = "Unable to monitor " + plural_season + ": " + monitor_seasons
+            return ObjectContainer(header=TITLE, message=msg)
 
     elif Prefs['sonarr_monitor'] == 'all':
         for season in options['seasons']:
@@ -915,3 +1006,16 @@ def checkAdmin():
     except:
         pass
     return False
+
+
+""" Pluralizes string_to_pluralize based on the length of obj_list """
+def pluralize(obj_list, string_to_pluralize, plural_string=""):
+    # Add better pluralization if needed
+    if not plural_string:
+        plural_string = string_to_pluralize + "s"
+
+    if len(obj_list) == 1:
+        return string_to_pluralize
+    else:
+        return plural_string
+
