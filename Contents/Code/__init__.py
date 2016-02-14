@@ -355,7 +355,9 @@ def ConfirmTVRequest(id, title, source="", year="", poster="", backdrop="", summ
         title_year = title + " " + "(" + year + ")"
     else:
         title_year = title
-    request_name = title_year + (" Season " + season) if season else ""
+    request_name = title_year
+    if season:
+        request_name += " Season " + season
     oc = ObjectContainer(title1="Confirm TV Request",
             title2="Are you sure you would like to request the TV Show " + request_name + "?")
 
@@ -389,7 +391,6 @@ def SelectTVSeason(id, title, source="", year="", title_year="", poster="", back
         oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="Return to Main Menu", thumb=R('return.png')))
         return oc
     count = 0
-    #seasons = {episode['SeasonNumber'] for episode in episodes}
     seasons = []
     for episode in episodes:
         for child in episode.getchildren():
@@ -437,15 +438,14 @@ def AddTVRequest(id, title, source='', year="", poster="", backdrop="", summary=
     if id in Dict['tv']:
         key = Dict['tv'][id]
         if not key.get('seasons'):
-            # The full show has already been requested.
             Log.Debug("TV Show is already requested")
             return MainMenu(locked=locked, message="TV Show has already been requested")
         if not season:
             # The full show is being requested, so erase individual season requests.
+            Log.Debug("Replacing a per-season request with a full request for " + title)
             key = Dict['tv'][id]['seasons'] = ""
         else:
             # We're requesting a season but some seasons have already been requested.
-            Log.Debug("Trying to add season")
             existing_seasons = key['seasons'].split(",")
             if season and season in existing_seasons:
                 Log.Debug("Season is already requested")
@@ -574,8 +574,6 @@ def ClearRequests(locked='unlocked'):
 def ViewRequest(id, type, seasons="", locked='unlocked'):
     key = Dict[type][id]
     title_year = key['title'] + " (" + key['year'] + ")"
-
-
     oc = ObjectContainer(title2=title_year)
     if Client.Platform == ClientPlatform.Android:  # If an android, add an empty first item because it gets truncated for some reason
         oc.add(DirectoryObject(key=None, title=""))
@@ -680,14 +678,15 @@ def SendToCouchpotato(id, locked='unlocked'):
 @route(PREFIX + '/sendtosonarr')
 def SendToSonarr(id, monitor_seasons="", locked='unlocked'):
     title = Dict['tv'][id]['title']
-    oc = SendToSonarrNoMenu(id, monitor_seasons=monitor_seasons, locked=locked)
+    oc = SendToSonarr_NoMenu(id, monitor_seasons=monitor_seasons, locked=locked)
     if checkAdmin():
         oc.add(DirectoryObject(key=Callback(ConfirmDeleteRequest, id=id, type='tv', title_year=title, locked=locked), title="Delete Request"))
     oc.add(DirectoryObject(key=Callback(ViewRequests, locked=locked), title="Return to View Requests"))
     oc.add(DirectoryObject(key=Callback(MainMenu, locked=locked), title="Return to Main Menu"))
     return oc
 
-def SendToSonarrNoMenu(id, monitor_seasons="", locked='unlocked'):
+
+def SendToSonarr_NoMenu(id, monitor_seasons="", locked='unlocked'):
     if not Prefs['sonarr_url'].startswith("http"):
         sonarr_url = "http://" + Prefs['sonarr_url']
     else:
@@ -742,20 +741,15 @@ def SendToSonarrNoMenu(id, monitor_seasons="", locked='unlocked'):
                    }
 
     if Prefs['sonarr_seasonrequests'] and monitor_seasons:
-
-        Log.Debug("Searching for seasons: " + monitor_seasons)
         monitor_seasons_list = set(monitor_seasons.split(","))
         found_season = False
         for season in options['seasons']:
-            Log.Debug("Found season: " + str(season['seasonNumber']))
             if str(season['seasonNumber']) in monitor_seasons_list:
                 if not season['monitored']:
                     season['monitored'] = True
-                    Log.Debug("Found season")
                     found_season = True
         if not found_season:
-            plural_season = pluralize(monitor_seasons_list, "season")
-            msg = "Unable to monitor " + plural_season + ": " + monitor_seasons
+            msg = "Unable to monitor S" + monitor_seasons
             return ObjectContainer(header=TITLE, message=msg)
 
     elif Prefs['sonarr_monitor'] == 'all':
@@ -776,8 +770,6 @@ def SendToSonarrNoMenu(id, monitor_seasons="", locked='unlocked'):
         options['monitored'] = False
     options['addOptions'] = add_options
     values = JSON.StringFromObject(options)
-
-    Log.Debug("Options is: " + str(options))
     try:
         HTTP.Request(sonarr_url + "api/Series", data=values, headers=api_header, method=http_method)
         oc = ObjectContainer(header=TITLE, message="Show has been sent to Sonarr.")
@@ -1006,16 +998,3 @@ def checkAdmin():
     except:
         pass
     return False
-
-
-""" Pluralizes string_to_pluralize based on the length of obj_list """
-def pluralize(obj_list, string_to_pluralize, plural_string=""):
-    # Add better pluralization if needed
-    if not plural_string:
-        plural_string = string_to_pluralize + "s"
-
-    if len(obj_list) == 1:
-        return string_to_pluralize
-    else:
-        return plural_string
-
